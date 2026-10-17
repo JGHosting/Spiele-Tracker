@@ -1,5 +1,5 @@
 // Offline-Cache. Bei Updates VERSION hochzählen.
-const VERSION = 'spieleabend-v11';
+const VERSION = 'spieleabend-v12';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

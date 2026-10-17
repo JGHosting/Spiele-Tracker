@@ -2,7 +2,7 @@
 
 /* ---------- Grundlagen ---------- */
 const KEY = 'spieleabend.v1';
-const APP_VERSION = 11;
+const APP_VERSION = 12;
 
 const TYPES = {
   high:       { label: 'Höchste Punkte gewinnen',       short: 'Punkte ↑',    desc: 'z. B. Kniffel, Qwixx – wer mehr Punkte hat, gewinnt' },

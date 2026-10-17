@@ -280,12 +280,13 @@ input[type=date]::-webkit-calendar-picker-indicator { opacity: .6; }
 /* Toast */
 .toast {
   position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top));
-  transform: translate(-50%, -150%); z-index: 30;
+  transform: translate(-50%, -250%); z-index: 30;
+  opacity: 0; visibility: hidden;
   background: var(--text); color: var(--bg); font-weight: 600; font-size: 14px;
-  padding: 12px 18px; border-radius: 99px; transition: transform .3s cubic-bezier(.2, .9, .3, 1.2);
+  padding: 12px 18px; border-radius: 99px; transition: transform .3s cubic-bezier(.2, .9, .3, 1.2), opacity .2s, visibility .3s;
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .5); white-space: nowrap;
 }
-.toast.show { transform: translate(-50%, 0); }
+.toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 input[type=number] { -moz-appearance: textfield; }
