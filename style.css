@@ -58,7 +58,7 @@ img, svg { -webkit-user-drag: none; }
 .top {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
-  padding: calc(env(safe-area-inset-top) + 10px) max(20px, calc((100% - 720px) / 2 + 20px)) 10px;
+  padding: calc(env(safe-area-inset-top) + 2px) max(20px, calc((100% - 720px) / 2 + 20px)) 8px;
   background: transparent;
   border-bottom: 1px solid transparent;
   transition: background .25s, border-color .25s;
@@ -68,11 +68,11 @@ img, svg { -webkit-user-drag: none; }
   backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
   border-bottom-color: var(--line);
 }
-.top h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
-.top-sub { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-.top .icon-btn.accent { width: 40px; height: 40px; border-radius: 50%; font-size: 24px; box-shadow: 0 6px 18px -6px var(--accent); }
+.top h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; transition: font-size .2s; }
+.top.scrolled h1 { font-size: 20px; }
+.top .icon-btn.accent { width: 36px; height: 36px; border-radius: 50%; font-size: 24px; font-weight: 400; line-height: 1; padding-bottom: 2px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); box-shadow: none; }
 
-main { padding: 6px 16px; max-width: 720px; margin: 0 auto; }
+main { padding: 8px 16px; max-width: 720px; margin: 0 auto; }
 .fade { animation: fade .25s ease; }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
 

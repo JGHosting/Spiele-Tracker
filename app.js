@@ -87,7 +87,6 @@ function setTab(t) { tab = t; render(); window.scrollTo({ top: 0 }); }
 function render() {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   $('#title').textContent = TITLES[tab];
-  $('#topSub').textContent = state.players.map(p => p.name).join(' & ');
   $('#topAction').style.visibility = tab === 'games' ? 'visible' : 'hidden';
   const views = { games: viewGames, history: viewHistory, stats: viewStats, more: viewMore };
   $('#view').innerHTML = `<div class="fade">${views[tab]()}</div>`;
@@ -438,7 +437,6 @@ function typeName(id, val) {
   if (!val.trim()) return;
   player(id).name = val.trim();
   save();
-  $('#topSub').textContent = state.players.map(p => p.name).join(' & ');
 }
 
 function setPlayer(id, key, val) {
@@ -581,4 +579,18 @@ window.addEventListener('pagehide', save);
 // Browser bitten, die Daten dauerhaft zu behalten
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 render();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// Auto-Update: bei jedem Öffnen nach neuer Version schauen und dann einmal neu laden
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    save();
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    reg.update();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update(); });
+  }).catch(() => {});
+}
