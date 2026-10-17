@@ -2,6 +2,7 @@
 
 /* ---------- Grundlagen ---------- */
 const KEY = 'spieleabend.v1';
+const APP_VERSION = 8;
 
 const TYPES = {
   high:       { label: 'Höchste Punkte gewinnen',       short: 'Punkte ↑',    desc: 'z. B. Kniffel, Qwixx – wer mehr Punkte hat, gewinnt' },
@@ -82,7 +83,7 @@ function toast(msg) {
 /* ---------- Navigation ---------- */
 const TITLES = { games: 'Spiele', history: 'Verlauf', stats: 'Statistik', more: 'Einstellungen' };
 
-function setTab(t) { tab = t; render(); window.scrollTo({ top: 0 }); }
+function setTab(t) { tab = t; render(); $('#view').scrollTop = 0; }
 
 function render() {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
@@ -429,7 +430,8 @@ function viewMore() {
     <label class="btn">⬆︎ Backup importieren<input type="file" accept="application/json,.json" hidden onchange="importData(this)"></label>
     <button class="btn danger" onclick="resetAll()">Alle Daten löschen</button>
   </div>
-  <p class="muted small center">Alle Daten liegen lokal auf diesem Gerät.<br>Mach ab und zu ein Backup.</p>`;
+  <p class="muted small center">Alle Daten liegen lokal auf diesem Gerät.<br>Mach ab und zu ein Backup.</p>
+  <div class="version">Version ${APP_VERSION}</div>`;
 }
 
 // Name sofort bei jedem Tippen speichern (iOS feuert beim Schließen der App kein change-Event)
@@ -485,14 +487,14 @@ function openSheet(html) {
   body.style.transform = '';
   const s = $('#sheet');
   s.classList.remove('hidden');
-  document.body.classList.add('lock');
+  $('#view').classList.add('lock');
   requestAnimationFrame(() => s.classList.add('open'));
 }
 function closeSheet() {
   const s = $('#sheet');
   s.classList.remove('open');
   $('#sheetBody').style.transform = '';
-  document.body.classList.remove('lock');
+  $('#view').classList.remove('lock');
   sheetMode = null;
   setTimeout(() => s.classList.add('hidden'), 250);
 }
