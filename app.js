@@ -18,7 +18,7 @@ function defaults() {
   return {
     players: [
       { id: 'p1', name: 'Jakob', color: '#7c5cff' },
-      { id: 'p2', name: 'Freundin', color: '#ff5c8a' }
+      { id: 'p2', name: 'Emma', color: '#ff5c8a' }
     ],
     games: [
       { id: uid(), name: 'Kniffel', emoji: '🎲', type: 'high' },
@@ -421,7 +421,7 @@ function viewMore() {
     ${state.players.map(p => `
       <div class="player-edit">
         <label class="color-pick" style="background:${p.color}"><input type="color" value="${p.color}" onchange="setPlayer('${p.id}','color',this.value)" aria-label="Farbe"></label>
-        <input class="text" value="${esc(p.name)}" onchange="setPlayer('${p.id}','name',this.value)" aria-label="Name">
+        <input class="text" value="${esc(p.name)}" oninput="typeName('${p.id}',this.value)" onblur="setPlayer('${p.id}','name',this.value)" enterkeyhint="done" onkeydown="if(event.key==='Enter')this.blur()" aria-label="Name">
       </div>`).join('')}
   </div>
   <div class="card">
@@ -431,6 +431,14 @@ function viewMore() {
     <button class="btn danger" onclick="resetAll()">Alle Daten löschen</button>
   </div>
   <p class="muted small center">Alle Daten liegen lokal auf diesem Gerät.<br>Mach ab und zu ein Backup.</p>`;
+}
+
+// Name sofort bei jedem Tippen speichern (iOS feuert beim Schließen der App kein change-Event)
+function typeName(id, val) {
+  if (!val.trim()) return;
+  player(id).name = val.trim();
+  save();
+  $('#topSub').textContent = state.players.map(p => p.name).join(' & ');
 }
 
 function setPlayer(id, key, val) {
@@ -565,5 +573,12 @@ function hideHint() {
 }
 
 /* ---------- Start ---------- */
+// Alter Platzhalter-Name einmalig ersetzen
+if (state.players[1] && state.players[1].name === 'Freundin') { state.players[1].name = 'Emma'; save(); }
+// Beim Verlassen der App sicherheitshalber speichern
+document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
+window.addEventListener('pagehide', save);
+// Browser bitten, die Daten dauerhaft zu behalten
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 render();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
