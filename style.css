@@ -56,14 +56,16 @@ img, svg { -webkit-user-drag: none; }
 
 /* Header */
 .top {
-  position: relative; z-index: 1;
+  position: sticky; top: 0; z-index: 15;
   display: flex; align-items: center; justify-content: space-between;
-  padding: calc(env(safe-area-inset-top) + 6px) max(20px, calc((100% - 720px) / 2 + 20px)) 8px;
+  /* Mindestens 50px Abstand nach oben, falls iOS keinen Safe-Area-Wert liefert */
+  padding: calc(max(env(safe-area-inset-top), 50px) + 6px) max(20px, calc((100% - 720px) / 2 + 20px)) 10px;
+  background: var(--bg);
 }
-/* Fester Hintergrund hinter der Statusleiste, damit beim Scrollen nichts durchscheint */
-body::before {
-  content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 15;
-  height: env(safe-area-inset-top); background: var(--bg);
+/* Weicher Übergang statt harter Kante oder Blur */
+.top::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 18px;
+  background: linear-gradient(var(--bg), transparent); pointer-events: none;
 }
 .top h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; }
 .top .icon-btn.accent { width: 36px; height: 36px; border-radius: 50%; font-size: 24px; font-weight: 400; line-height: 1; padding-bottom: 2px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); box-shadow: none; }
