@@ -57,16 +57,20 @@ img, svg { -webkit-user-drag: none; }
 /* Header */
 .top {
   position: sticky; top: 0; z-index: 5;
-  display: flex; align-items: flex-end; justify-content: space-between;
-  padding: calc(env(safe-area-inset-top) + 16px) max(20px, calc((100% - 720px) / 2 + 20px)) 12px;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(env(safe-area-inset-top) + 10px) max(20px, calc((100% - 720px) / 2 + 20px)) 10px;
+  background: transparent;
   border-bottom: 1px solid transparent;
-  transition: border-color .2s;
+  transition: background .25s, border-color .25s;
 }
-.top.scrolled { border-bottom-color: var(--line); }
-.top h1 { margin: 2px 0 0; font-size: 32px; font-weight: 800; letter-spacing: -0.03em; }
-.top-sub { color: var(--muted); font-size: 13px; font-weight: 500; }
+.top.scrolled {
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border-bottom-color: var(--line);
+}
+.top h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.top-sub { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.top .icon-btn.accent { width: 40px; height: 40px; border-radius: 50%; font-size: 24px; box-shadow: 0 6px 18px -6px var(--accent); }
 
 main { padding: 6px 16px; max-width: 720px; margin: 0 auto; }
 .fade { animation: fade .25s ease; }
@@ -99,7 +103,7 @@ main { padding: 6px 16px; max-width: 720px; margin: 0 auto; }
 .duel-num i, .gc-score i { font-style: normal; color: var(--muted); margin: 0 6px; font-weight: 500; }
 .bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; margin: 12px 0 10px; gap: 3px; }
 .bar div { border-radius: 99px; transition: width .4s ease; min-width: 3px; }
-.bar.empty { opacity: .25; }
+.bar.zero { opacity: .25; }
 .bar.slim { height: 6px; margin: 10px 0 14px; }
 .duel-foot { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
 

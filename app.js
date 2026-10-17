@@ -107,7 +107,7 @@ function duelCard(ms, sub) {
       <div class="duel-num"><span style="color:${a.color}">${wa}</span><i>:</i><span style="color:${b.color}">${wb}</span></div>
       <div class="duel-p right">${esc(b.name)}<span class="dot" style="background:${b.color}"></span></div>
     </div>
-    <div class="bar ${tot ? '' : 'empty'}"><div style="width:${pa}%;background:${a.color}"></div><div style="width:${100 - pa}%;background:${b.color}"></div></div>
+    <div class="bar ${tot ? '' : 'zero'}"><div style="width:${pa}%;background:${a.color}"></div><div style="width:${100 - pa}%;background:${b.color}"></div></div>
     <div class="duel-foot"><span>${lead}</span><span>${sub}</span></div>
   </div>`;
 }
