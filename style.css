@@ -51,25 +51,21 @@ img, svg { -webkit-user-drag: none; }
 
 .bg-blobs { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .bg-blobs span { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(90px); opacity: .22; }
-.bg-blobs span:first-child { background: var(--accent); top: -25vmax; left: -20vmax; }
+.bg-blobs span:first-child { background: var(--accent); top: 5vmax; left: -35vmax; }
 .bg-blobs span:last-child { background: var(--accent2); bottom: -30vmax; right: -25vmax; opacity: .15; }
 
 /* Header */
 .top {
-  position: sticky; top: 0; z-index: 5;
+  position: relative; z-index: 1;
   display: flex; align-items: center; justify-content: space-between;
-  padding: calc(env(safe-area-inset-top) + 2px) max(20px, calc((100% - 720px) / 2 + 20px)) 8px;
-  background: transparent;
-  border-bottom: 1px solid transparent;
-  transition: background .25s, border-color .25s;
+  padding: calc(env(safe-area-inset-top) + 6px) max(20px, calc((100% - 720px) / 2 + 20px)) 8px;
 }
-.top.scrolled {
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
-  backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  border-bottom-color: var(--line);
+/* Fester Hintergrund hinter der Statusleiste, damit beim Scrollen nichts durchscheint */
+body::before {
+  content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 15;
+  height: env(safe-area-inset-top); background: var(--bg);
 }
-.top h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; transition: font-size .2s; }
-.top.scrolled h1 { font-size: 20px; }
+.top h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.2; }
 .top .icon-btn.accent { width: 36px; height: 36px; border-radius: 50%; font-size: 24px; font-weight: 400; line-height: 1; padding-bottom: 2px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); box-shadow: none; }
 
 main { padding: 8px 16px; max-width: 720px; margin: 0 auto; }

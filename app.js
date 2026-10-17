@@ -550,8 +550,6 @@ function ask(text, okLabel = 'Löschen', danger = true) {
 document.addEventListener('touchmove', e => { if (e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
 // Kontextmenü (lange drücken) aus
 document.addEventListener('contextmenu', e => { if (!e.target.closest('input')) e.preventDefault(); });
-// Header bekommt beim Scrollen eine Trennlinie
-window.addEventListener('scroll', () => $('.top').classList.toggle('scrolled', window.scrollY > 4), { passive: true });
 
 // Hinweis, falls die App noch im Browser statt vom Homescreen läuft
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
