@@ -137,7 +137,7 @@ function matchRow(m, showGame) {
 /* ---------- Tab: Spiele ---------- */
 function viewGames() {
   const [a, b] = state.players;
-  let html = duelCard(state.matches, `${state.matches.length} Partien`);
+  let html = installHint() + duelCard(state.matches, `${state.matches.length} Partien`);
   html += '<div class="grid">';
   for (const g of state.games) {
     const ms = matchesOf(g.id);
@@ -233,8 +233,8 @@ function saveMatch() {
   toast(winner === 'draw' ? '🤝 Unentschieden gespeichert' : `🏆 ${pName(winner)} gewinnt!`);
 }
 
-function delMatch(id) {
-  if (!confirm('Diese Partie löschen?')) return;
+async function delMatch(id) {
+  if (!await ask('Diese Partie löschen?')) return;
   state.matches = state.matches.filter(m => m.id !== id);
   save();
   if (sheetMode === 'game' && draft.gameId) openSheet(gameSheet(gameById(draft.gameId)));
@@ -291,9 +291,9 @@ function saveGame() {
   toast(gdraft.id ? 'Spiel aktualisiert' : `${data.emoji} ${name} angelegt`);
 }
 
-function delGame(id) {
+async function delGame(id) {
   const n = state.matches.filter(m => m.gameId === id).length;
-  if (!confirm(`Spiel${n ? ` und ${n} Partie${n > 1 ? 'n' : ''}` : ''} wirklich löschen?`)) return;
+  if (!await ask(`Spiel${n ? ` und ${n} Partie${n > 1 ? 'n' : ''}` : ''} wirklich löschen?`)) return;
   state.games = state.games.filter(g => g.id !== id);
   state.matches = state.matches.filter(m => m.gameId !== id);
   if (histFilter === id) histFilter = 'all';
@@ -454,37 +454,115 @@ function importData(input) {
   const f = input.files[0];
   if (!f) return;
   const r = new FileReader();
-  r.onload = () => {
+  r.onload = async () => {
+    let s;
     try {
-      const s = JSON.parse(r.result);
+      s = JSON.parse(r.result);
       if (!Array.isArray(s.players) || !Array.isArray(s.games) || !Array.isArray(s.matches)) throw new Error();
-      if (!confirm(`Backup mit ${s.matches.length} Partien laden? Die aktuellen Daten werden ersetzt.`)) return;
-      state = s; save(); render(); toast('Backup geladen');
-    } catch (e) { toast('Datei ist kein gültiges Backup'); }
+    } catch (e) { toast('Datei ist kein gültiges Backup'); return; }
+    if (!await ask(`Backup mit ${s.matches.length} Partien laden? Die aktuellen Daten werden ersetzt.`, 'Laden', false)) return;
+    state = s; save(); render(); toast('Backup geladen');
   };
   r.readAsText(f);
   input.value = '';
 }
 
-function resetAll() {
-  if (!confirm('Wirklich ALLE Spiele und Partien löschen?')) return;
+async function resetAll() {
+  if (!await ask('Wirklich ALLE Spiele und Partien löschen?', 'Alles löschen')) return;
   state = defaults(); save(); render(); toast('Zurückgesetzt');
 }
 
 /* ---------- Bottom Sheet ---------- */
 function openSheet(html) {
-  $('#sheetBody').innerHTML = '<div class="grabber"></div>' + html;
+  const body = $('#sheetBody');
+  body.innerHTML = '<div class="grabber"></div>' + html;
+  body.style.transform = '';
   const s = $('#sheet');
   s.classList.remove('hidden');
+  document.body.classList.add('lock');
   requestAnimationFrame(() => s.classList.add('open'));
 }
 function closeSheet() {
   const s = $('#sheet');
   s.classList.remove('open');
+  $('#sheetBody').style.transform = '';
+  document.body.classList.remove('lock');
   sheetMode = null;
   setTimeout(() => s.classList.add('hidden'), 250);
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+// Sheet nach unten wischen zum Schließen
+(() => {
+  const el = $('#sheetBody');
+  let startY = null, dy = 0;
+  el.addEventListener('touchstart', e => {
+    if (el.scrollTop > 0 || e.target.closest('input')) { startY = null; return; }
+    startY = e.touches[0].clientY; dy = 0;
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (startY == null) return;
+    dy = e.touches[0].clientY - startY;
+    if (dy > 0) {
+      e.preventDefault();
+      el.classList.add('dragging');
+      el.style.transform = `translateY(${dy}px)`;
+    }
+  }, { passive: false });
+  el.addEventListener('touchend', () => {
+    if (startY == null) return;
+    el.classList.remove('dragging');
+    if (dy > 110) closeSheet(); else el.style.transform = '';
+    startY = null;
+  });
+})();
+
+/* ---------- Eigener Bestätigungsdialog ---------- */
+function ask(text, okLabel = 'Löschen', danger = true) {
+  return new Promise(resolve => {
+    const d = $('#dialog'), ok = $('#dlgOk'), cancel = $('#dlgCancel');
+    $('#dlgText').textContent = text;
+    ok.textContent = okLabel;
+    ok.className = 'btn ' + (danger ? 'danger-fill' : 'primary');
+    d.classList.remove('hidden');
+    requestAnimationFrame(() => d.classList.add('open'));
+    const done = v => {
+      d.classList.remove('open');
+      setTimeout(() => d.classList.add('hidden'), 200);
+      ok.onclick = cancel.onclick = d.onclick = null;
+      resolve(v);
+    };
+    ok.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+    d.onclick = e => { if (e.target === d) done(false); };
+  });
+}
+
+/* ---------- App-Gefühl ---------- */
+// Pinch-Zoom und Doppeltipp-Zoom auf iOS unterbinden
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', e => { if (e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
+// Kontextmenü (lange drücken) aus
+document.addEventListener('contextmenu', e => { if (!e.target.closest('input')) e.preventDefault(); });
+// Header bekommt beim Scrollen eine Trennlinie
+window.addEventListener('scroll', () => $('.top').classList.toggle('scrolled', window.scrollY > 4), { passive: true });
+
+// Hinweis, falls die App noch im Browser statt vom Homescreen läuft
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function installHint() {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('spieleabend.hint') === '1'; } catch (e) { /* ignore */ }
+  if (isStandalone || dismissed) return '';
+  return `<div class="card install">
+    <span class="emoji">📲</span>
+    <p><b>Als App installieren:</b> In Safari auf Teilen tippen → „Zum Home-Bildschirm“. Dann läuft sie im Vollbild ohne Browserleiste.</p>
+    <button class="icon-btn sm ghost" onclick="hideHint()" aria-label="Ausblenden">✕</button>
+  </div>`;
+}
+function hideHint() {
+  try { localStorage.setItem('spieleabend.hint', '1'); } catch (e) { /* ignore */ }
+  render();
+}
 
 /* ---------- Start ---------- */
 render();
