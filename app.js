@@ -2,7 +2,7 @@
 
 /* ---------- Grundlagen ---------- */
 const KEY = 'spieleabend.v1';
-const APP_VERSION = 10;
+const APP_VERSION = 11;
 
 const TYPES = {
   high:       { label: 'Höchste Punkte gewinnen',       short: 'Punkte ↑',    desc: 'z. B. Kniffel, Qwixx – wer mehr Punkte hat, gewinnt' },
@@ -571,14 +571,6 @@ function hideHint() {
 }
 
 /* ---------- Start ---------- */
-// iOS-Fehler umgehen: Im Homescreen-Modus fehlt sonst unten ein Streifen in Höhe der Statusleiste.
-function fitHeight() {
-  const h = isStandalone ? Math.max(screen.height, window.innerHeight) : window.innerHeight;
-  document.documentElement.style.setProperty('--app-h', h + 'px');
-}
-fitHeight();
-window.addEventListener('resize', fitHeight);
-window.addEventListener('orientationchange', () => setTimeout(fitHeight, 300));
 // Alter Platzhalter-Name einmalig ersetzen
 if (state.players[1] && state.players[1].name === 'Freundin') { state.players[1].name = 'Emma'; save(); }
 // Beim Verlassen der App sicherheitshalber speichern

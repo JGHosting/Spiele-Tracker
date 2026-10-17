@@ -34,8 +34,7 @@ body {
   background: var(--bg);
   color: var(--text);
   /* Fest über den ganzen Bildschirm, inkl. Bereich um Dynamic Island und Home-Leiste */
-  position: fixed; top: 0; right: 0; left: 0;
-  height: var(--app-h, 100%);
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
@@ -61,8 +60,7 @@ img, svg { -webkit-user-drag: none; }
 .top {
   position: relative; flex: none; z-index: 2;
   display: flex; align-items: center; justify-content: space-between;
-  /* Mindestens 50px Abstand nach oben, falls iOS keinen Safe-Area-Wert liefert */
-  padding: calc(max(env(safe-area-inset-top), 50px) + 6px) max(20px, calc((100% - 720px) / 2 + 20px)) 10px;
+  padding: calc(env(safe-area-inset-top) + 14px) max(20px, calc((100% - 720px) / 2 + 20px)) 10px;
   background: var(--bg);
 }
 /* Weicher Übergang statt harter Kante oder Blur */
