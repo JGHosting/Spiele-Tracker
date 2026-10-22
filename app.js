@@ -2,7 +2,7 @@
 
 /* ---------- Grundlagen ---------- */
 const KEY = 'spieleabend.v1';
-const APP_VERSION = 14;
+const APP_VERSION = 15;
 
 const TYPES = {
   high:       { label: 'Höchste Punkte gewinnen',       short: 'Punkte ↑',    desc: 'z. B. Kniffel, Qwixx – wer mehr Punkte hat, gewinnt' },
@@ -548,7 +548,10 @@ const AUTH_ERRORS = {
   'invite/expired': 'Code abgelaufen – bitte einen neuen erstellen lassen',
   'invite/own': 'Das ist dein eigener Code – teile ihn mit deiner Partnerin',
   'permission-denied': 'Keine Berechtigung (Code abgelaufen oder Gruppe voll?)',
-  'unavailable': 'Keine Internetverbindung'
+  'unavailable': 'Keine Internetverbindung',
+  'loading-timeout': 'Synchronisierung lädt nicht – Internetverbindung prüfen und App neu öffnen',
+  'auth/operation-not-allowed': 'E-Mail-Anmeldung ist in Firebase noch nicht aktiviert',
+  'auth/configuration-not-found': 'E-Mail-Anmeldung ist in Firebase noch nicht aktiviert'
 };
 const errText = e => AUTH_ERRORS[e && e.code] || (e && e.message) || 'Unbekannter Fehler';
 
@@ -563,7 +566,7 @@ function accountCard() {
     return `<div class="card">
       <div class="label tight">Konto & Synchronisierung</div>
       <p class="muted small" style="margin:0 0 12px">Melde dich an, um die App auf mehreren Geräten zu nutzen. Ohne Anmeldung bleibt alles nur auf diesem Gerät.</p>
-      <input class="text" id="aMail" type="email" autocomplete="username" inputmode="email" placeholder="E-Mail">
+      <input class="text" id="aMail" type="email" autocomplete="username" inputmode="email" placeholder="E-Mail-Adresse">
       <input class="text" id="aPw" type="password" autocomplete="current-password" placeholder="Passwort (mind. 6 Zeichen)" style="margin-top:10px"
         onkeydown="if(event.key==='Enter')doAuth('in')">
       <button class="btn primary" onclick="doAuth('in')">Anmelden</button>
@@ -619,18 +622,33 @@ function groupCard() {
   </div>`;
 }
 
+// Warten, bis das Sync-Modul (Firebase) geladen ist – beim ersten Öffnen kann das ein paar Sekunden dauern
+async function cloudReady() {
+  if (!window.Cloud || !Cloud.ready) throw Object.assign(new Error('Synchronisierung wird noch geladen – bitte kurz warten'), { code: 'loading' });
+  let t;
+  try {
+    await Promise.race([Cloud.ready, new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error(''), { code: 'loading-timeout' })), 20000); })]);
+  } catch (e) {
+    if (e.code === 'loading-timeout') throw e;
+    throw Object.assign(new Error('Synchronisierung konnte nicht starten: ' + (e && e.message || e)), { code: 'start-failed' });
+  } finally { clearTimeout(t); }
+}
+const looksLikeMail = m => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m.trim());
+
 async function doAuth(kind) {
   const mail = $('#aMail').value, pw = $('#aPw').value;
   if (!mail.trim() || !pw) { toast('Bitte E-Mail und Passwort eingeben'); return; }
+  if (!looksLikeMail(mail)) { toast('Ins erste Feld gehört deine E-Mail-Adresse'); $('#aMail').focus(); return; }
   try {
     toast(kind === 'up' ? 'Konto wird erstellt …' : 'Anmelden …');
+    await cloudReady();
     await (kind === 'up' ? Cloud.signUp(mail, pw) : Cloud.signIn(mail, pw));
   } catch (e) { toast(errText(e)); }
 }
 async function doReset() {
   const mail = $('#aMail').value;
-  if (!mail.trim()) { toast('Erst die E-Mail eintragen'); return; }
-  try { await Cloud.resetPassword(mail); toast('E-Mail zum Zurücksetzen verschickt'); }
+  if (!looksLikeMail(mail)) { toast('Erst deine E-Mail-Adresse eintragen'); return; }
+  try { await cloudReady(); await Cloud.resetPassword(mail); toast('E-Mail zum Zurücksetzen verschickt'); }
   catch (e) { toast(errText(e)); }
 }
 async function doSignOut() {

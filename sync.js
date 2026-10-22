@@ -11,13 +11,17 @@
 
 const cfg = window.FIREBASE_CONFIG;
 const Cloud = window.Cloud = { configured: !!cfg, user: null };
+// Wird erfüllt, sobald Firebase geladen ist (bzw. abgelehnt, wenn der Start scheitert)
+let readyOk, readyFail;
+Cloud.ready = new Promise((res, rej) => { readyOk = res; readyFail = rej; });
+Cloud.ready.catch(() => {});
 
 const notify = (name, detail) => { const fn = window[name]; if (typeof fn === 'function') fn(detail); };
 
 if (!cfg) {
   notify('onCloudAuth', null);
 } else {
-  start().catch(err => { console.error(err); notify('onCloudAuth', null); });
+  start().catch(err => { console.error(err); Cloud.error = err; readyFail(err); notify('onCloudAuth', null); });
 }
 
 async function start() {
@@ -389,6 +393,8 @@ async function start() {
       await FB.setDoc(ref('users', uid), { groupId: FB.deleteField() }, { merge: true });
     }
   });
+
+  readyOk();
 
   async function freshCode() {
     const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
