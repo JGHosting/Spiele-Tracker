@@ -49,7 +49,7 @@ Firebase-Projekt kann sich jede Person mit eigenem Konto anmelden.
 
 Die Werte in `config.js` sind nicht geheim, sie benennen nur das Projekt. Geschützt werden die Daten durch Anmeldung und die Sicherheitsregeln.
 
-**Firebase-Bundle neu bauen** (nur bei SDK-Update nötig):
+**Firebase-Bundle neu bauen** (nur bei SDK-Update nötig, immer in einem leeren Ordner – Reste alter Versionen erzeugen sonst doppelte Firebase-Kerne und den Fehler „Component auth has not been registered yet“):
 ```bash
 npm i firebase@12.19.0 esbuild
 npx esbuild vendor/firebase-entry.js --bundle --format=esm --minify --outfile=vendor/firebase.js
