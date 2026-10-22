@@ -1,5 +1,5 @@
 // Offline-Cache. Bei Updates VERSION hochzählen.
-const VERSION = 'spieleabend-v13';
+const VERSION = 'spieleabend-v14';
 const FILES = [
   './', 'index.html', 'style.css', 'app.js', 'config.js', 'sync.js', 'vendor/firebase.js',
   'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'
