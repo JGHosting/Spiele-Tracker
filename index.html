@@ -19,7 +19,13 @@
 
   <header class="top">
     <h1 id="title">Spiele</h1>
-    <button class="icon-btn accent" id="topAction" aria-label="Neues Spiel" onclick="editGame()">+</button>
+    <div class="top-actions">
+      <button class="sync-btn hidden" id="syncBtn" aria-label="Synchronisierung" onclick="showSync()">
+        <svg viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4.25 4.25 0 0 1-.5 9.5H7z"/></svg>
+        <span class="sdot"></span>
+      </button>
+      <button class="icon-btn accent" id="topAction" aria-label="Neues Spiel" onclick="editGame()">+</button>
+    </div>
   </header>
 
   <main id="view"></main>
@@ -57,6 +63,8 @@
   </div>
   <div id="toast" class="toast"></div>
 
+  <script src="config.js"></script>
   <script src="app.js"></script>
+  <script type="module" src="sync.js"></script>
 </body>
 </html>

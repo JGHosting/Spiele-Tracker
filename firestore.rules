@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// Sicherheitsregeln für den Spiele-Tracker.
+// In der Firebase-Konsole unter Firestore → Regeln komplett einfügen und veröffentlichen.
+//
+//   users/{uid}/…        privat – nur die Person selbst
+//   groups/{gid}/…       geteilt – nur die (max. 2) Mitglieder
+//   invites/{CODE}       Einladung – nur mit bekanntem Code abrufbar, 7 Tage gültig
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function groupPath(gid) { return /databases/$(database)/documents/groups/$(gid); }
+    function invitePath(code) { return /databases/$(database)/documents/invites/$(code); }
+    function isGroupMember(gid) { return signedIn() && me() in get(groupPath(gid)).data.members; }
+
+    // Beitritt nur mit gültigem, nicht abgelaufenem Code dieser Gruppe – und man belegt nur den freien Platz
+    function validJoin(gid) {
+      let inv = get(invitePath(request.resource.data.joinCode)).data;
+      let oldP = resource.data.players;
+      let newP = request.resource.data.players;
+      return inv.groupId == gid
+        && request.time.toMillis() - inv.created < 7 * 24 * 60 * 60 * 1000
+        && newP[inv.freeSlot].uid == me()
+        && ((inv.freeSlot == 'p1' && newP.p2 == oldP.p2) || (inv.freeSlot == 'p2' && newP.p1 == oldP.p1));
+    }
+
+    // ---------- Privater Bereich ----------
+    match /users/{uid} {
+      allow read, write: if signedIn() && me() == uid;
+      match /{coll}/{docId} {
+        allow read, write: if signedIn() && me() == uid && coll in ['games', 'matches'];
+      }
+    }
+
+    // ---------- Gemeinsamer Bereich ----------
+    match /groups/{gid} {
+      allow read: if signedIn() && me() in resource.data.members;
+
+      allow create: if signedIn()
+        && request.resource.data.owner == me()
+        && request.resource.data.members == [me()];
+
+      allow update: if signedIn() && (
+        // Mitglied: Namen, Farben, Einladungscode ändern – Mitgliederliste nur durch eigenen Austritt
+        (me() in resource.data.members
+          && request.resource.data.owner == resource.data.owner
+          && (request.resource.data.members == resource.data.members
+              || request.resource.data.members == resource.data.members.removeAll([me()])))
+        ||
+        // Beitreten: Gruppe hat genau ein Mitglied, man fügt nur sich selbst hinzu
+        (!(me() in resource.data.members)
+          && resource.data.members.size() == 1
+          && request.resource.data.members == resource.data.members.concat([me()])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'players', 'joinCode'])
+          && validJoin(gid))
+      );
+
+      allow delete: if false;
+
+      match /{coll}/{docId} {
+        allow read, write: if coll in ['games', 'matches'] && isGroupMember(gid);
+      }
+    }
+
+    // ---------- Einladungscodes ----------
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && code.matches('^[A-Z2-9]{6}$')
+        && request.resource.data.createdBy == me()
+        && me() in getAfter(groupPath(request.resource.data.groupId)).data.members;
+      allow delete: if signedIn()
+        && (resource.data.createdBy == me() || isGroupMember(resource.data.groupId));
+      allow update: if false;
+    }
+  }
+}

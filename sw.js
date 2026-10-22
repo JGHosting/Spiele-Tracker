@@ -1,6 +1,9 @@
 // Offline-Cache. Bei Updates VERSION hochzählen.
-const VERSION = 'spieleabend-v12';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const VERSION = 'spieleabend-v13';
+const FILES = [
+  './', 'index.html', 'style.css', 'app.js', 'config.js', 'sync.js', 'vendor/firebase.js',
+  'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
@@ -15,18 +18,20 @@ self.addEventListener('activate', e => {
 });
 
 // Netzwerk zuerst (damit Updates sofort ankommen), Cache als Fallback offline.
+// Anfragen an andere Server (Firebase-Anmeldung, Firestore-Sync) gehen direkt durch –
+// Firestore puffert Offline-Änderungen selbst in IndexedDB.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  const sameOrigin = new URL(e.request.url).origin === location.origin;
+  if (new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    (sameOrigin ? fetch(e.request.url, { cache: 'no-cache' }) : fetch(e.request))
+    fetch(e.request.url, { cache: 'no-cache' })
       .then(res => {
-        if (res.ok && sameOrigin) {
+        if (res.ok) {
           const copy = res.clone();
           caches.open(VERSION).then(c => c.put(e.request, copy));
         }
         return res;
       })
-      .catch(() => caches.match(e.request).then(r => r || caches.match('index.html')))
+      .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('index.html')))
   );
 });

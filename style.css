@@ -292,3 +292,32 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 input[type=number] { -moz-appearance: textfield; }
 
 .version { text-align: center; font-size: 12px; color: var(--muted); opacity: .6; margin-top: 8px; }
+
+/* ---------- Synchronisierung ---------- */
+.top-actions { display: flex; align-items: center; gap: 10px; }
+.sync-btn { --s: #34c759; position: relative; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); background: var(--line); }
+.sync-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.sync-btn .sdot { position: absolute; right: 5px; bottom: 6px; border: 2px solid var(--bg); }
+.sdot { --s: #34c759; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--s); flex: none; }
+[data-s="syncing"] .sdot, .sync-btn[data-s="syncing"] .sdot { --s: #ff9f0a; animation: pulse 1s ease-in-out infinite; }
+[data-s="offline"] .sdot, .sync-btn[data-s="offline"] .sdot { --s: #8e8e93; }
+@keyframes pulse { 50% { opacity: .35; } }
+.sync-line { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+
+.acct { display: flex; align-items: center; gap: 12px; }
+.acct b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn.slim { width: auto; flex: none; padding: 10px 14px; margin-top: 0; font-size: 14px; }
+.btn.link { background: transparent; border: 0; color: var(--muted); font-weight: 500; font-size: 14px; padding: 10px; }
+.card .text + .text { margin-top: 10px; }
+.card p.muted.small { line-height: 1.45; }
+
+.join-row { display: flex; gap: 10px; margin-top: 12px; }
+.join-row .text { text-transform: uppercase; letter-spacing: .18em; font-weight: 700; }
+.join-row .text::placeholder { text-transform: none; letter-spacing: normal; font-weight: 400; }
+
+.members { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 12px; }
+.invite { text-align: center; padding: 16px; border-radius: 18px; border: 1.5px dashed var(--line); margin-bottom: 12px; }
+.invite .code { font-size: 32px; font-weight: 800; letter-spacing: .22em; margin: 6px 0 12px; font-variant-numeric: tabular-nums; -webkit-user-select: text; user-select: text; }
+.invite .btn.slim { margin: 0 auto; display: inline-flex; }
+.vis { margin-right: 4px; }
+code { font-size: .92em; padding: 1px 5px; border-radius: 6px; background: var(--line); }

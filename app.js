@@ -2,7 +2,7 @@
 
 /* ---------- Grundlagen ---------- */
 const KEY = 'spieleabend.v1';
-const APP_VERSION = 12;
+const APP_VERSION = 13;
 
 const TYPES = {
   high:       { label: 'Höchste Punkte gewinnen',       short: 'Punkte ↑',    desc: 'z. B. Kniffel, Qwixx – wer mehr Punkte hat, gewinnt' },
@@ -38,12 +38,45 @@ function load() {
   } catch (e) { /* ignore */ }
   return defaults();
 }
+// Lokale Daten (Safari-Speicher) – im Konto-Modus bleiben sie unangetastet als Sicherung liegen
 function save() {
+  if (mode !== 'local') return;
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
   catch (e) { toast('Speichern fehlgeschlagen'); }
 }
+window.localSnapshot = () => load();
 
+/* ---------- Modus: lokal oder Konto (Sync) ---------- */
+const CACHE_KEY = 'spieleabend.cloudcache';
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { /* ignore */ } };
+
+let mode = 'local';
+let cloudInfo = null;
+let syncStatus = 'synced';
 let state = load();
+// War zuletzt jemand angemeldet, sofort den letzten Konto-Stand zeigen (bis die Synchronisierung bereit ist)
+try {
+  const c = JSON.parse(lsGet(CACHE_KEY));
+  if (c && c.state && Array.isArray(c.state.games)) { state = c.state; mode = 'cloud'; }
+} catch (e) { /* ignore */ }
+
+const isCloud = () => mode === 'cloud';
+const hasGroup = () => !!(cloudInfo && cloudInfo.group);
+const partnerName = () => hasGroup() ? pName(cloudInfo.group.partnerSlot) : 'Partner';
+
+let opQueue = [];
+// Änderung speichern: lokal → Safari-Speicher, Konto → Firestore (funktioniert auch offline)
+function persist(op, ...args) {
+  if (!isCloud()) { save(); return; }
+  if (!window.Cloud || !Cloud.user) { opQueue.push([op, args]); return; }
+  runOp(op, args);
+}
+function runOp(op, args) {
+  Promise.resolve()
+    .then(() => Cloud[op](...args))
+    .catch(err => { console.error(op, err); toast('Sync-Fehler: ' + errText(err)); });
+}
 let tab = 'games';
 let histFilter = 'all';
 let draft = {};
@@ -85,13 +118,40 @@ const TITLES = { games: 'Spiele', history: 'Verlauf', stats: 'Statistik', more: 
 
 function setTab(t) { tab = t; render(); $('#view').scrollTop = 0; }
 
+let lastTab = null;
 function render() {
+  renderPending = false;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   $('#title').textContent = TITLES[tab];
   $('#topAction').style.visibility = tab === 'games' ? 'visible' : 'hidden';
+  renderSync();
   const views = { games: viewGames, history: viewHistory, stats: viewStats, more: viewMore };
-  $('#view').innerHTML = `<div class="fade">${views[tab]()}</div>`;
+  // Einblend-Animation nur beim Tab-Wechsel, nicht bei jedem Sync-Update
+  $('#view').innerHTML = `<div class="${tab !== lastTab ? 'fade' : ''}">${views[tab]()}</div>`;
+  lastTab = tab;
 }
+
+// Updates aus der Cloud nicht anwenden, während jemand gerade in ein Feld tippt
+let renderPending = false;
+function renderSoon() {
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && $('#view').contains(a)) { renderPending = true; return; }
+  render();
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (renderPending) renderSoon(); }, 0));
+
+function renderSync() {
+  const b = $('#syncBtn');
+  if (!b) return;
+  b.classList.toggle('hidden', !isCloud());
+  b.dataset.s = syncStatus;
+}
+const STATUS_TEXT = {
+  synced: 'Alles synchronisiert',
+  syncing: 'Änderungen werden übertragen …',
+  offline: 'Offline – Änderungen werden gespeichert und später übertragen'
+};
+function showSync() { toast((STATUS_TEXT[syncStatus] || '') + (cloudInfo ? ' · ' + cloudInfo.email : '')); }
 
 /* ---------- Bausteine ---------- */
 function duelCard(ms, sub) {
@@ -142,9 +202,10 @@ function viewGames() {
   for (const g of state.games) {
     const ms = matchesOf(g.id);
     const last = ms[0];
+    const vis = hasGroup() ? `<span class="vis" title="${g.space === 'grp' ? 'Geteilt' : 'Privat'}">${g.space === 'grp' ? '👥' : '🔒'}</span>` : '';
     html += `
     <button class="game-card" onclick="openGame('${g.id}')">
-      <div class="gc-top"><span class="emoji">${esc(g.emoji || '🎲')}</span><span class="pill">${TYPES[g.type].short}</span></div>
+      <div class="gc-top"><span class="emoji">${esc(g.emoji || '🎲')}</span><span class="pill">${vis}${TYPES[g.type].short}</span></div>
       <div class="gc-name">${esc(g.name)}</div>
       <div class="gc-score"><span style="color:${a.color}">${winsOf(ms, a.id)}</span><i>:</i><span style="color:${b.color}">${winsOf(ms, b.id)}</span></div>
       <div class="gc-meta">${last ? 'Zuletzt ' + relDate(last.date) : 'Noch nicht gespielt'}</div>
@@ -201,6 +262,7 @@ function pickWinner(w) {
 
 function saveMatch() {
   const g = gameById(draft.gameId);
+  if (!g) { closeSheet(); toast('Dieses Spiel gibt es nicht mehr'); return; }
   const date = $('#mDate').value || today();
   let scores = null, winner = null;
 
@@ -226,8 +288,9 @@ function saveMatch() {
     }
   }
 
-  state.matches.push({ id: uid(), gameId: g.id, date, winner, scores, created: Date.now() });
-  save();
+  const m = { id: uid(), gameId: g.id, date, winner, scores, created: Date.now() };
+  state.matches.push({ ...m, space: g.space });
+  persist('addMatch', m, g.space);
   closeSheet();
   render();
   toast(winner === 'draw' ? '🤝 Unentschieden gespeichert' : `🏆 ${pName(winner)} gewinnt!`);
@@ -235,8 +298,10 @@ function saveMatch() {
 
 async function delMatch(id) {
   if (!await ask('Diese Partie löschen?')) return;
-  state.matches = state.matches.filter(m => m.id !== id);
-  save();
+  const m = state.matches.find(x => x.id === id);
+  if (!m) return;
+  state.matches = state.matches.filter(x => x.id !== id);
+  persist('deleteMatch', m);
   if (sheetMode === 'game' && draft.gameId) openSheet(gameSheet(gameById(draft.gameId)));
   render();
 }
@@ -245,8 +310,16 @@ async function delMatch(id) {
 function editGame(id) {
   const g = id ? gameById(id) : null;
   const locked = g && state.matches.some(m => m.gameId === g.id);
-  gdraft = { id: g ? g.id : null, type: g ? g.type : 'high' };
+  // Neue Spiele sind standardmäßig privat – Teilen ist eine bewusste Entscheidung
+  gdraft = { id: g ? g.id : null, type: g ? g.type : 'high', space: g ? g.space : (isCloud() ? 'me' : undefined) };
   sheetMode = 'edit';
+  const visBlock = isCloud() && hasGroup() ? `
+    <div class="label">Sichtbarkeit</div>
+    <div class="seg" id="visSeg">
+      <button type="button" data-v="me" class="${gdraft.space === 'me' ? 'on' : ''}" onclick="pickVis('me')">🔒 Nur ich</button>
+      <button type="button" data-v="grp" class="${gdraft.space === 'grp' ? 'on' : ''}" onclick="pickVis('grp')">👥 Mit ${esc(partnerName())}</button>
+    </div>
+    <p class="hint">${g ? 'Beim Ändern wandern alle Partien dieses Spiels mit.' : 'Private Spiele sieht nur du. Geteilte Spiele sehen und bearbeiten beide.'}</p>` : '';
   openSheet(`
     <div class="sheet-head"><h2 class="grow">${g ? 'Spiel bearbeiten' : 'Neues Spiel'}</h2></div>
     <div class="name-row">
@@ -263,6 +336,7 @@ function editGame(id) {
       <input type="checkbox" id="gWgp" ${!g || g.winnerGetsPoints ? 'checked' : ''}>
       <span>Gewinner bekommt die Minuspunkte des Verlierers als Pluspunkte</span>
     </label>
+    ${visBlock}
     <button class="btn primary" onclick="saveGame()">Speichern</button>
     ${g ? `<button class="btn danger" onclick="delGame('${g.id}')">Spiel löschen</button>` : ''}`);
   if (!g) setTimeout(() => $('#gName').focus(), 300);
@@ -274,6 +348,11 @@ function pickType(t) {
   $('#wgpRow').classList.toggle('hidden', t !== 'loserMinus');
 }
 
+function pickVis(v) {
+  gdraft.space = v;
+  document.querySelectorAll('#visSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+}
+
 function saveGame() {
   const name = $('#gName').value.trim();
   if (!name) { toast('Bitte einen Namen eingeben'); return; }
@@ -283,21 +362,36 @@ function saveGame() {
     type: gdraft.type,
     winnerGetsPoints: gdraft.type === 'loserMinus' ? $('#gWgp').checked : undefined
   };
-  if (gdraft.id) Object.assign(gameById(gdraft.id), data);
-  else state.games.push({ id: uid(), ...data });
-  save();
+  if (gdraft.id) {
+    const g = gameById(gdraft.id);
+    if (!g) { closeSheet(); return; }
+    Object.assign(g, data);
+    persist('saveGame', { ...g });
+    // Sichtbarkeit geändert → Spiel samt Partien verschieben
+    if (isCloud() && gdraft.space && gdraft.space !== g.space) {
+      persist('moveGame', { ...g }, gdraft.space);
+      toast(gdraft.space === 'grp' ? `👥 Mit ${partnerName()} geteilt` : '🔒 Jetzt privat');
+    } else toast('Spiel aktualisiert');
+  } else {
+    const g = { id: uid(), ...data, created: Date.now(), space: gdraft.space };
+    state.games.push(g);
+    persist('saveGame', g);
+    toast(`${data.emoji} ${name} angelegt`);
+  }
   closeSheet();
   render();
-  toast(gdraft.id ? 'Spiel aktualisiert' : `${data.emoji} ${name} angelegt`);
 }
 
 async function delGame(id) {
+  const g = gameById(id);
+  if (!g) return;
   const n = state.matches.filter(m => m.gameId === id).length;
-  if (!await ask(`Spiel${n ? ` und ${n} Partie${n > 1 ? 'n' : ''}` : ''} wirklich löschen?`)) return;
-  state.games = state.games.filter(g => g.id !== id);
+  const shared = isCloud() && g.space === 'grp' ? ` Es verschwindet auch bei ${partnerName()}.` : '';
+  if (!await ask(`Spiel${n ? ` und ${n} Partie${n > 1 ? 'n' : ''}` : ''} wirklich löschen?${shared}`)) return;
+  state.games = state.games.filter(x => x.id !== id);
   state.matches = state.matches.filter(m => m.gameId !== id);
   if (histFilter === id) histFilter = 'all';
-  save();
+  persist('deleteGame', g);
   closeSheet();
   render();
 }
@@ -416,8 +510,10 @@ function gameStatCard(g) {
 /* ---------- Tab: Mehr ---------- */
 function viewMore() {
   return `
+  ${accountCard()}
+  ${groupCard()}
   <div class="card">
-    <div class="label tight">Spieler</div>
+    <div class="label tight">Spieler${hasGroup() ? ' <span class="muted">· für beide</span>' : ''}</div>
     ${state.players.map(p => `
       <div class="player-edit">
         <label class="color-pick" style="background:${p.color}"><input type="color" value="${p.color}" onchange="setPlayer('${p.id}','color',this.value)" aria-label="Farbe"></label>
@@ -428,24 +524,254 @@ function viewMore() {
     <div class="label tight">Daten</div>
     <button class="btn" onclick="exportData()">⬇︎ Backup exportieren</button>
     <label class="btn">⬆︎ Backup importieren<input type="file" accept="application/json,.json" hidden onchange="importData(this)"></label>
-    <button class="btn danger" onclick="resetAll()">Alle Daten löschen</button>
+    ${isCloud() && localPending() ? `<button class="btn" onclick="offerMigration(true)">📥 Lokale Daten übernehmen</button>` : ''}
+    ${isCloud() ? '' : `<button class="btn danger" onclick="resetAll()">Alle Daten löschen</button>`}
   </div>
-  <p class="muted small center">Alle Daten liegen lokal auf diesem Gerät.<br>Mach ab und zu ein Backup.</p>
+  <p class="muted small center">${isCloud()
+    ? 'Deine Daten liegen in deinem Konto und sind auch offline verfügbar.'
+    : 'Alle Daten liegen lokal auf diesem Gerät.<br>Mach ab und zu ein Backup.'}</p>
   <div class="version">Version ${APP_VERSION}</div>`;
 }
 
-// Name sofort bei jedem Tippen speichern (iOS feuert beim Schließen der App kein change-Event)
+/* ---------- Konto & Gruppe ---------- */
+const AUTH_ERRORS = {
+  'auth/invalid-credential': 'E-Mail oder Passwort falsch',
+  'auth/wrong-password': 'E-Mail oder Passwort falsch',
+  'auth/user-not-found': 'E-Mail oder Passwort falsch',
+  'auth/invalid-email': 'Ungültige E-Mail-Adresse',
+  'auth/missing-password': 'Bitte ein Passwort eingeben',
+  'auth/email-already-in-use': 'Für diese E-Mail gibt es schon ein Konto – bitte anmelden',
+  'auth/weak-password': 'Passwort zu kurz (mind. 6 Zeichen)',
+  'auth/network-request-failed': 'Keine Internetverbindung',
+  'auth/too-many-requests': 'Zu viele Versuche – bitte kurz warten',
+  'invite/not-found': 'Code nicht gefunden oder schon benutzt',
+  'invite/expired': 'Code abgelaufen – bitte einen neuen erstellen lassen',
+  'invite/own': 'Das ist dein eigener Code – teile ihn mit deiner Partnerin',
+  'permission-denied': 'Keine Berechtigung (Code abgelaufen oder Gruppe voll?)',
+  'unavailable': 'Keine Internetverbindung'
+};
+const errText = e => AUTH_ERRORS[e && e.code] || (e && e.message) || 'Unbekannter Fehler';
+
+function accountCard() {
+  if (!window.FIREBASE_CONFIG) {
+    return `<div class="card">
+      <div class="label tight">Synchronisierung</div>
+      <p class="muted small">Noch nicht eingerichtet. Sobald die Firebase-Konfiguration in <code>config.js</code> eingetragen ist, kannst du dich hier anmelden.</p>
+    </div>`;
+  }
+  if (!isCloud()) {
+    return `<div class="card">
+      <div class="label tight">Konto & Synchronisierung</div>
+      <p class="muted small" style="margin:0 0 12px">Melde dich an, um die App auf mehreren Geräten zu nutzen. Ohne Anmeldung bleibt alles nur auf diesem Gerät.</p>
+      <input class="text" id="aMail" type="email" autocomplete="username" inputmode="email" placeholder="E-Mail">
+      <input class="text" id="aPw" type="password" autocomplete="current-password" placeholder="Passwort (mind. 6 Zeichen)" style="margin-top:10px"
+        onkeydown="if(event.key==='Enter')doAuth('in')">
+      <button class="btn primary" onclick="doAuth('in')">Anmelden</button>
+      <button class="btn" onclick="doAuth('up')">Neues Konto erstellen</button>
+      <button class="btn link" onclick="doReset()">Passwort vergessen?</button>
+    </div>`;
+  }
+  const i = cloudInfo || {};
+  return `<div class="card">
+    <div class="label tight">Konto</div>
+    <div class="acct">
+      <div class="grow"><b>${esc(i.email || '…')}</b><div class="muted small sync-line" data-s="${syncStatus}"><span class="sdot"></span>${STATUS_TEXT[syncStatus]}</div></div>
+      <button class="btn slim" onclick="doSignOut()">Abmelden</button>
+    </div>
+  </div>`;
+}
+
+function groupCard() {
+  if (!isCloud() || !cloudInfo) return '';
+  const g = cloudInfo.group;
+  const priv = state.games.filter(x => x.space === 'me').length;
+  const shared = state.games.filter(x => x.space === 'grp').length;
+  if (!g) {
+    return `<div class="card">
+      <div class="label tight">Gemeinsam spielen</div>
+      <p class="muted small" style="margin:0 0 12px">Erstelle eine Gruppe und lade deine Partnerin per Code ein. Deine bisherigen Spiele bleiben privat, bis du sie gezielt teilst.</p>
+      <button class="btn primary" onclick="startCreateGroup()">Gruppe erstellen</button>
+      <div class="join-row">
+        <input class="text" id="joinCode" maxlength="6" autocapitalize="characters" autocomplete="off" placeholder="Einladungscode">
+        <button class="btn slim" onclick="doJoin()">Beitreten</button>
+      </div>
+    </div>`;
+  }
+  const waiting = g.members < 2;
+  return `<div class="card">
+    <div class="label tight">Gemeinsam spielen</div>
+    <div class="members">
+      <span class="dot" style="background:${pColor(g.mySlot)}"></span><b>${esc(pName(g.mySlot))}</b> <span class="muted small">(du)</span>
+      <span class="muted">&amp;</span>
+      <span class="dot" style="background:${pColor(g.partnerSlot)}"></span><b>${esc(pName(g.partnerSlot))}</b>
+      ${waiting ? '<span class="muted small">(noch nicht beigetreten)</span>' : ''}
+    </div>
+    ${waiting ? `
+      <div class="invite">
+        <div class="muted small">Einladungscode für ${esc(pName(g.partnerSlot))}</div>
+        <div class="code">${esc(g.inviteCode || '––––––')}</div>
+        <button class="btn slim" onclick="shareCode('${esc(g.inviteCode || '')}')">Code teilen</button>
+        <button class="btn link" onclick="newCode()">Neuen Code erstellen</button>
+      </div>` : ''}
+    <p class="muted small">👥 ${shared} geteilt · 🔒 ${priv} privat. Private Spiele kannst du im Spiel über ✎ → Sichtbarkeit teilen.</p>
+    ${priv ? `<button class="btn" onclick="shareAll()">Alle privaten Spiele teilen</button>` : ''}
+    <button class="btn danger" onclick="doLeave()">Gruppe verlassen</button>
+  </div>`;
+}
+
+async function doAuth(kind) {
+  const mail = $('#aMail').value, pw = $('#aPw').value;
+  if (!mail.trim() || !pw) { toast('Bitte E-Mail und Passwort eingeben'); return; }
+  try {
+    toast(kind === 'up' ? 'Konto wird erstellt …' : 'Anmelden …');
+    await (kind === 'up' ? Cloud.signUp(mail, pw) : Cloud.signIn(mail, pw));
+  } catch (e) { toast(errText(e)); }
+}
+async function doReset() {
+  const mail = $('#aMail').value;
+  if (!mail.trim()) { toast('Erst die E-Mail eintragen'); return; }
+  try { await Cloud.resetPassword(mail); toast('E-Mail zum Zurücksetzen verschickt'); }
+  catch (e) { toast(errText(e)); }
+}
+async function doSignOut() {
+  if (!await ask('Abmelden? Deine Konto-Daten bleiben gespeichert. Auf diesem Gerät siehst du danach wieder nur die lokalen Daten.', 'Abmelden', false)) return;
+  await Cloud.signOut();
+}
+
+function startCreateGroup() {
+  sheetMode = 'group';
+  openSheet(`
+    <div class="sheet-head"><h2 class="grow">Wer bist du?</h2></div>
+    <p class="muted small">Damit Siege und Punkte bei beiden richtig zugeordnet sind.</p>
+    <div class="seg">${state.players.map(p =>
+      `<button type="button" style="--c:${p.color}" onclick="doCreateGroup('${p.id}')">${esc(p.name)}</button>`).join('')}</div>`);
+}
+async function doCreateGroup(slot) {
+  closeSheet();
+  try {
+    toast('Gruppe wird erstellt …');
+    const code = await Cloud.createGroup(slot);
+    toast('Gruppe erstellt – Code: ' + code);
+  } catch (e) { toast(errText(e)); }
+}
+async function doJoin() {
+  const code = ($('#joinCode').value || '').trim().toUpperCase();
+  if (code.length < 6) { toast('Bitte den 6-stelligen Code eingeben'); return; }
+  try {
+    const inv = await Cloud.previewInvite(code);
+    const me = inv.names ? inv.names[inv.freeSlot] : '';
+    const them = inv.names ? inv.names[inv.freeSlot === 'p1' ? 'p2' : 'p1'] : '';
+    if (!await ask(`Der Gruppe von ${them} beitreten? Du bist darin „${me}“. Deine privaten Spiele bleiben privat.`, 'Beitreten', false)) return;
+    await Cloud.joinGroup(code);
+    toast(`👥 Mit ${them} verbunden`);
+    setTimeout(() => Cloud.tidyDuplicates().catch(() => {}), 1500);
+  } catch (e) { toast(errText(e)); }
+}
+async function shareCode(code) {
+  const text = `Tritt meiner Spieleabend-Gruppe bei: Code ${code}\n${location.origin + location.pathname}`;
+  if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { /* abgebrochen */ } }
+  try { await navigator.clipboard.writeText(code); toast('Code kopiert'); } catch (e) { toast('Code: ' + code); }
+}
+async function newCode() {
+  try { const c = await Cloud.newInvite(); toast('Neuer Code: ' + c); } catch (e) { toast(errText(e)); }
+}
+async function shareAll() {
+  const n = state.games.filter(x => x.space === 'me').length;
+  if (!await ask(`Alle ${n} privaten Spiele samt Partien mit ${partnerName()} teilen? Gleichnamige Spiele werden zusammengeführt.`, 'Teilen', false)) return;
+  persist('shareAllPrivate');
+  toast('Wird geteilt …');
+}
+async function doLeave() {
+  if (!await ask(`Gruppe verlassen? Geteilte Spiele bleiben bei ${partnerName()}, du siehst sie dann nicht mehr. Private Spiele behältst du.`, 'Verlassen')) return;
+  try { await Cloud.leaveGroup(); toast('Gruppe verlassen'); } catch (e) { toast(errText(e)); }
+}
+
+/* ---------- Lokale Daten ins Konto übernehmen ---------- */
+const migKey = () => 'spieleabend.migrated.' + (Cloud.user ? Cloud.user.uid : '');
+function localHasContent(l) {
+  const def = ['kniffel', 'qwixx', 'ganz schön clever', 'rummikub'];
+  return l.matches.length > 0 || l.games.some(g => !def.includes(g.name.trim().toLowerCase()));
+}
+const localPending = () => window.Cloud && Cloud.user && !lsGet(migKey()) && localHasContent(load());
+
+async function offerMigration(manual, isNew) {
+  const local = load();
+  if (!manual && !localHasContent(local)) return;
+  const nG = local.games.length, nM = local.matches.length;
+  const ok = await ask(`Die Daten von diesem Gerät (${nG} Spiele, ${nM} Partien) in dein Konto übernehmen? Sie landen als private Spiele bei dir. Die lokale Kopie bleibt als Sicherung erhalten.`, 'Übernehmen', false);
+  lsSet(migKey(), ok ? 'done' : 'skipped');
+  if (!ok) {
+    // Neues Konto ohne Übernahme: wenigstens die Startspiele anlegen
+    if (isNew) Cloud.migrateLocal({ players: local.players, games: defaults().games, matches: [] }).catch(() => {});
+    render();
+    return;
+  }
+  try {
+    await Cloud.migrateLocal(local);
+    toast(`📥 ${nM} Partien übernommen`);
+  } catch (e) { lsSet(migKey(), null); toast('Übernahme fehlgeschlagen: ' + errText(e)); }
+}
+
+/* ---------- Brücke zur Sync-Schicht (sync.js) ---------- */
+window.onCloudAuth = async user => {
+  if (!user) {
+    // Abgemeldet oder Sync nicht eingerichtet → lokaler Modus mit den Safari-Daten
+    const wasCloud = isCloud();
+    mode = 'local';
+    cloudInfo = null;
+    opQueue = [];
+    lsSet(CACHE_KEY, null);
+    if (wasCloud) { state = load(); render(); }
+    else if (tab === 'more') render();
+    return;
+  }
+  mode = 'cloud';
+  cloudInfo = Cloud.info();
+  const q = opQueue; opQueue = [];
+  q.forEach(([op, args]) => runOp(op, args));
+  if (!lsGet(migKey())) {
+    const local = load();
+    if (localHasContent(local)) setTimeout(() => offerMigration(false, user.isNew), 600);
+    else {
+      lsSet(migKey(), 'done');
+      // Neues Konto ohne eigene Daten: Startspiele (Kniffel & Co.) privat anlegen
+      if (user.isNew) Cloud.migrateLocal(local).catch(() => {});
+    }
+  }
+  render();
+};
+
+window.onCloudState = s => {
+  state = s;
+  cloudInfo = Cloud.info();
+  lsSet(CACHE_KEY, JSON.stringify({ state: s }));
+  if (sheetMode !== 'game' || !gameById(draft.gameId)) { if (sheetMode === 'game') closeSheet(); }
+  renderSoon();
+};
+
+window.onCloudStatus = s => {
+  syncStatus = s;
+  renderSync();
+  const line = document.querySelector('.sync-line');
+  if (line) { line.dataset.s = s; line.lastChild.textContent = STATUS_TEXT[s]; }
+};
+
+// Name beim Tippen speichern (iOS feuert beim Schließen der App kein change-Event)
+let nameTimer = null;
 function typeName(id, val) {
   if (!val.trim()) return;
   player(id).name = val.trim();
-  save();
+  if (!isCloud()) { save(); return; }
+  clearTimeout(nameTimer);
+  nameTimer = setTimeout(() => persist('setPlayer', id, 'name', val.trim()), 500);
 }
 
 function setPlayer(id, key, val) {
   const p = player(id);
   if (key === 'name' && !val.trim()) { render(); return; }
   p[key] = key === 'name' ? val.trim() : val;
-  save();
+  clearTimeout(nameTimer);
+  persist('setPlayer', id, key, p[key]);
   render();
 }
 
@@ -468,6 +794,12 @@ function importData(input) {
       s = JSON.parse(r.result);
       if (!Array.isArray(s.players) || !Array.isArray(s.games) || !Array.isArray(s.matches)) throw new Error();
     } catch (e) { toast('Datei ist kein gültiges Backup'); return; }
+    if (isCloud()) {
+      if (!await ask(`Backup mit ${s.matches.length} Partien als private Spiele in dein Konto importieren? Vorhandenes bleibt erhalten.`, 'Importieren', false)) return;
+      persist('migrateLocal', s);
+      toast('Backup wird importiert');
+      return;
+    }
     if (!await ask(`Backup mit ${s.matches.length} Partien laden? Die aktuellen Daten werden ersetzt.`, 'Laden', false)) return;
     state = s; save(); render(); toast('Backup geladen');
   };
@@ -476,6 +808,7 @@ function importData(input) {
 }
 
 async function resetAll() {
+  if (isCloud()) return;
   if (!await ask('Wirklich ALLE Spiele und Partien löschen?', 'Alles löschen')) return;
   state = defaults(); save(); render(); toast('Zurückgesetzt');
 }
@@ -572,7 +905,7 @@ function hideHint() {
 
 /* ---------- Start ---------- */
 // Alter Platzhalter-Name einmalig ersetzen
-if (state.players[1] && state.players[1].name === 'Freundin') { state.players[1].name = 'Emma'; save(); }
+if (!isCloud() && state.players[1] && state.players[1].name === 'Freundin') { state.players[1].name = 'Emma'; save(); }
 // Beim Verlassen der App sicherheitshalber speichern
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 window.addEventListener('pagehide', save);
