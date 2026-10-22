@@ -106,10 +106,27 @@ async function start() {
   /* ---------- Listener ---------- */
   // Welche Listen schon einmal vom Server bestätigt wurden (vorher kein automatisches Aufräumen)
   const confirmed = new Set();
+  // Listener, der sich nach einem Fehler (z. B. kurzzeitig fehlende Berechtigung direkt nach
+  // dem Anlegen/Beitreten einer Gruppe) selbst neu verbindet, solange er noch gebraucht wird.
+  function resilient(makeRef, onNext, onFail) {
+    let active = true, unsub = null, tries = 0;
+    const start = () => {
+      unsub = FB.onSnapshot(makeRef(), { includeMetadataChanges: true }, snap => { tries = 0; onNext(snap); }, err => {
+        console.warn('listener', err && err.code);
+        if (!active) return;
+        tries++;
+        if (onFail) onFail(err, tries);
+        if (active) setTimeout(() => { if (active) start(); }, Math.min(1000 * tries, 8000));
+      });
+    };
+    start();
+    return () => { active = false; if (unsub) unsub(); };
+  }
+
   function listenSpace(space, list) {
     for (const kind of ['games', 'matches']) {
       const key = space + kind;
-      list.push(FB.onSnapshot(FB.collection(db, ...root(space), kind), { includeMetadataChanges: true }, snap => {
+      list.push(resilient(() => FB.collection(db, ...root(space), kind), snap => {
         const map = data[space][kind];
         map.clear();
         snap.docs.forEach(d => map.set(d.id, { ...d.data(), id: d.id }));
@@ -117,7 +134,7 @@ async function start() {
         if (!snap.metadata.fromCache) confirmed.add(key);
         if (key === 'grpgames') scheduleTidy();
         emit();
-      }, err => console.warn(key, err)));
+      }));
     }
   }
 
@@ -145,18 +162,39 @@ async function start() {
   function startGroup(gid) {
     stopGroup();
     groupId = gid;
-    groupUnsubs.push(FB.onSnapshot(ref('groups', gid), { includeMetadataChanges: true }, snap => {
-      if (!snap.exists()) { if (!snap.metadata.fromCache) leaveLocalOnly(); return; }
+    groupUnsubs.push(resilient(() => ref('groups', gid), snap => {
+      if (!snap.exists()) { if (!snap.metadata.fromCache && !snap.metadata.hasPendingWrites) verifyMembership(gid); return; }
       const g = snap.data();
-      if (!(g.members || []).includes(uid)) { leaveLocalOnly(); return; }
+      if (!(g.members || []).includes(uid)) { if (!snap.metadata.hasPendingWrites) verifyMembership(gid); return; }
       group = { id: gid, ...g };
       pendingBy.set('group', snap.metadata.hasPendingWrites);
       emit();
-    }, err => {
-      // Kein Zugriff mehr (z. B. aus Gruppe entfernt) → Verweis im Profil aufräumen
-      if (err.code === 'permission-denied') leaveLocalOnly();
+    }, (err, tries) => {
+      // Mehrfach kein Zugriff → beim Server nachfragen, ob man wirklich nicht (mehr) Mitglied ist
+      if (err.code === 'permission-denied' && tries >= 2) verifyMembership(gid);
     }));
     listenSpace('grp', groupUnsubs);
+  }
+
+  // Gruppe nur dann lokal entfernen, wenn der Server mehrfach bestätigt, dass man nicht Mitglied ist.
+  // (Direkt nach dem Anlegen/Beitreten kann der Server kurz "keine Berechtigung" melden.)
+  let verifying = false;
+  async function verifyMembership(gid) {
+    if (verifying) return;
+    verifying = true;
+    try {
+      for (let i = 1; i <= 4; i++) {
+        await new Promise(r => setTimeout(r, 1500 * i));
+        if (groupId !== gid) return;
+        try {
+          const s = await FB.getDocFromServer(ref('groups', gid));
+          if (s.exists() && (s.data().members || []).includes(uid)) return; // alles gut, Listener verbindet neu
+        } catch (e) {
+          if (e.code !== 'permission-denied') return; // offline o. Ä. → nichts löschen
+        }
+      }
+      if (groupId === gid) leaveLocalOnly();
+    } finally { verifying = false; }
   }
 
   function leaveLocalOnly() {
@@ -329,8 +367,9 @@ async function start() {
       const b = FB.writeBatch(db);
       b.set(ref('groups', gid), { owner: uid, members: [uid], players, inviteCode: code, created: Date.now() });
       b.set(ref('invites', code), { groupId: gid, createdBy: uid, freeSlot, names: { p1: players.p1.name, p2: players.p2.name }, created: Date.now() });
-      b.set(ref('users', uid), { groupId: gid }, { merge: true });
+      // Erst wenn der Server die Gruppe gespeichert hat, im Profil darauf verweisen (sonst lauscht die App zu früh)
       await b.commit();
+      await FB.setDoc(ref('users', uid), { groupId: gid }, { merge: true });
       return code;
     },
 
